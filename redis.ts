@@ -6,19 +6,21 @@ import type {
 
 export class RedisStore implements Store {
   #client: RedisClientType;
-
-  constructor(client: RedisClientType) {
+  resource: string
+  
+  constructor(client: RedisClientType, resource: string) {
     this.#client = client;
+    this.resource = resource
   }
 
   async set(
-    employeeId: string,
+    resourceId: string,
     locationId: string,
     date: string,
     slots: Slots
   ): Promise<void> {
     await this.#client.set(
-      `availability:${employeeId}:${locationId}:${date}`,
+      `${this.resource}:availability:${resourceId}:${locationId}:${date}`,
       slots.join("")
     );
   }

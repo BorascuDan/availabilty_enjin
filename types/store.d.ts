@@ -1,7 +1,6 @@
-type DateKey = string;
-type LocationId = string;
-type EmployeeId = string;
-
+export type DateKey = string;
+export type LocationId = string;
+export type ResourceId = string;
 
 export type Slots = Array<0 | 1>;
 
@@ -14,12 +13,12 @@ export type LocationAvailability = {
 };
 
 export type AvailabilityMap = {
-  [employeeId: EmployeeId]: LocationAvailability;
+  [resourceId: ResourceId]: LocationAvailability;
 };
 
 export interface Store {
   set(
-    employeeId: EmployeeId,
+    resourceId: ResourceId,
     locationId: LocationId,
     date: DateKey,
     slots: Slots
