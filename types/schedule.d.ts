@@ -5,11 +5,22 @@ export interface Interval {
     end: string
 }
 
-//false unavailable time
 //true available time
-export interface Schedule extends Interval {
-    canDoSchedule: boolean 
+export interface AvailableSchedule extends Interval {
+  canDoSchedule: true;
 }
+
+//false unavailable time
+export interface BlockedSchedule extends Interval {
+  canDoSchedule: false;
+}
+
+export type Schedule = AvailableSchedule | BlockedSchedule;
+
+export type Schedules =
+  | [AvailableSchedule]
+  | [AvailableSchedule, BlockedSchedule]
+  | [BlockedSchedule, AvailableSchedule];  
 
 export interface LocationDispoibility {
     schedules: Schedule[],
