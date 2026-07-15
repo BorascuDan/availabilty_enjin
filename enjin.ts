@@ -47,9 +47,10 @@ export class Availability {
       for ( const [date, locationDispoibility] of Object.entries(dateDisponibility) ) {
         for ( const {schedules, bookedIntervals, locationId} of locationDispoibility ) {
             let availability = new Array(4 * 24).fill(0);
-            if (schedules.length) this.setSchedule(availability, schedules);
+            if (!schedules.length) continue;
+            this.setSchedule(availability, schedules);
             if (bookedIntervals.length) this.setBooked(availability, bookedIntervals);
-            this.connection.set(resourceId, locationId, date, availability).catch((e) => console.error('Failed to save in redis'));
+            await this.connection.set(resourceId, locationId, date, availability);
         }
       }
     }
