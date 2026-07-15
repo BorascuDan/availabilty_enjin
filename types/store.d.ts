@@ -17,5 +17,6 @@ export type AvailabilityMap = {
 };
 
 export interface Store {
-  multyleSet(availability: { [key: string]: string }): Promise<void>;
+  multyleSet(availability: { [key: string]: string }): Promise<string>;
+  getSlots(key: string, start: number, end: number): Promise<string>;
 }

@@ -2,9 +2,9 @@ import type {  RedisClientType } from "redis";
 import { RedisStore } from "./redis";
 import type { Store } from "./types/store";
 import { BookingSchema, type Booking, type Interval, type Schedules } from "./types/schemas";
-import { isNumber, slotHashing } from "./utils";
+import { isNumber, minutesIndexOffset, slotHashing } from "./utils";
 
-export const SLOT_DURATION = 15 
+export const SLOT_DURATION = 15
 export const SLOTS_PER_DAY = 60 * 24 / SLOT_DURATION;
 
 export class Availability {
@@ -21,8 +21,8 @@ export class Availability {
   //set base availability based on schedule
   private setSchedule (availability: number[], schedules: Schedules) {
     for ( let {start, end, canDoSchedule} of schedules ) {
-        const [startIndex, endIndex] = this.getIntervalIndex(start, end) 
-        if (!isNumber(startIndex) || !isNumber(endIndex)) throw new Error("a slot is not the right format")     
+        const [startIndex, endIndex] = this.getIntervalIndex(start, end)
+        if (!isNumber(startIndex) || !isNumber(endIndex)) throw new Error("a slot is not the right format")
         if (!canDoSchedule) this.setSlot(startIndex, endIndex, availability)
         else {
           this.setSlot(0, startIndex, availability);
@@ -39,7 +39,7 @@ export class Availability {
   //fieled the bocked spaces
   private setBooked (availability: number[], bookedIntervals: Interval[]) {
     for ( let {start, end} of bookedIntervals ) {
-        const [startIndex, endIndex] = this.getIntervalIndex(start, end) 
+        const [startIndex, endIndex] = this.getIntervalIndex(start, end)
         if (!isNumber(startIndex) || !isNumber(endIndex)) throw new Error("a slot is not the right format")
         this.setSlot(startIndex, endIndex, availability)
     }
@@ -64,7 +64,7 @@ export class Availability {
     const booking = BookingSchema.parse(allResourcesDispoibility);
     //object for multiplexing in redis
     let availability: { [key: string]: string } = {};
-   
+
     //parse data with folowing steps:
     //for a specific resource
     for ( const [resourceId, dateDisponibility] of Object.entries(booking) ) {
@@ -79,7 +79,7 @@ export class Availability {
             this.setSchedule(dayLocationAvailability, schedules);
             // add booking if it exists
             if (bookedIntervals.length) this.setBooked(dayLocationAvailability, bookedIntervals);
-            
+
             availability[
               this.generateKey(resourceId, locationId, date)
             ] = dayLocationAvailability.join("")
@@ -87,6 +87,36 @@ export class Availability {
       }
     }
     //populate initial keys
-    await this.connection.multyleSet(availability)
+    const inserted = await this.connection.multyleSet(availability)
+    if (inserted != "OK") throw new Error("Failed to establish connection to redis")
+  }
+
+  async checkSlot({
+    resourceId,
+    locationId,
+    date,
+    start,
+    end,
+    duration = 0
+  }: {resourceId: string, locationId: string, date: string, start: string, end: string, duration: number}) {
+   // hash the start index
+    const startIndex = slotHashing(start);
+    let endIndex;
+    if (end) {
+      //when end is provided check if it is within the same slot as start
+      const [_, endMinutes] = end.split(":").map(Number) as [number, number]
+      //everything that is between n * SLOT_DURATION and (n + 1) * SLOT_DURATION bounds to previos slot
+      //while evry n * SLOT_DURATION is within the same slot as (n - 1) * SLOT_DURATION
+      const upperBound = endMinutes % SLOT_DURATION
+      //hash the end index
+      endIndex = !upperBound ? slotHashing(end) - 1 : slotHashing(end);
+    } else {
+      //check the offset
+      endIndex = startIndex + minutesIndexOffset(duration)
+   }
+
+   const slotKey = this.generateKey(resourceId, locationId, date)
+   const slotsStatus = new Set(await this.connection.getSlots(slotKey, startIndex, endIndex))
+   return !slotsStatus.has("1")
   }
 }

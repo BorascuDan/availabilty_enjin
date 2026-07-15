@@ -7,6 +7,12 @@ export const slotHashing = (time: string): number => {
   return Math.floor(totalMinutes / SLOT_DURATION)
 }
 
+export const minutesIndexOffset = (duration: number): number => {
+  const basePosition = Math.floor(duration / SLOT_DURATION);
+  if (!(duration % SLOT_DURATION)) return basePosition - 1;
+  else return basePosition;
+}
+
 export const isNumber = (value: unknown): value is number => {
   return typeof value === "number" && !Number.isNaN(value);
 };
