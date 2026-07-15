@@ -2,6 +2,11 @@
   "name": "availabilty_enjin",
   "module": "index.ts",
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "ci": "bun run typecheck && bun test"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -9,6 +14,7 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "redis": "^6.1.0"
+    "redis": "^6.1.0",
+    "zod": "^4.4.3"
   }
 }
