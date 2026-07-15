@@ -73,56 +73,47 @@ const booking: Booking = {
 };
 
 describe("Availability.cacheDisponibility", () => {
-  it("caches one bitmap per resource/location/date, skipping locations without schedules", async () => {
+  it("batches every resource/location/date bitmap into a single mSet", async () => {
     //mocks a redis connection
-    const set = mock(async () => "OK");
-    const client = { set } as unknown as RedisClientType;
+    const mSet = mock(async () => "OK");
+    const client = { mSet } as unknown as RedisClientType;
     const availability = new Availability(client, "salon");
 
     await availability.cacheDisponibility(booking);
 
-    //catch the number of time it is called
-    expect(set).toHaveBeenCalledTimes(5);
+    //all keys are written in one multiplexed call
+    expect(mSet).toHaveBeenCalledTimes(1);
 
-    // open 09:00-17:00, break 12:00-13:00, booked 09:30-10:15 and 15:00-16:00
-    // → free 09:00-09:30, 10:15-12:00, 13:00-15:00, 16:00-17:00
-    expect(set).toHaveBeenCalledWith(
-      "salon:availability:resource-1:location-1:2026-07-15",
-      day(1, [["09:00", "09:30"], ["10:15", "12:00"], ["13:00", "15:00"], ["16:00", "17:00"]])
-    );
+    expect(mSet).toHaveBeenCalledWith({
+      // open 09:00-17:00, break 12:00-13:00, booked 09:30-10:15 and 15:00-16:00
+      // → free 09:00-09:30, 10:15-12:00, 13:00-15:00, 16:00-17:00
+      "salon:availability:resource-1:location-1:2026-07-15":
+        day(1, [["09:00", "09:30"], ["10:15", "12:00"], ["13:00", "15:00"], ["16:00", "17:00"]]),
 
-    // open 10:00-14:00, nothing booked
-    // → free 10:00-14:00
-    expect(set).toHaveBeenCalledWith(
-      "salon:availability:resource-1:location-2:2026-07-15",
-      day(1, [["10:00", "14:00"]])
-    );
+      // open 10:00-14:00, nothing booked → free 10:00-14:00
+      "salon:availability:resource-1:location-2:2026-07-15":
+        day(1, [["10:00", "14:00"]]),
 
-    // open 08:00-12:00, booked 13:00-13:45 (outside working hours, no effect)
-    // → free 08:00-12:00
-    expect(set).toHaveBeenCalledWith(
-      "salon:availability:resource-1:location-1:2026-07-16",
-      day(1, [["08:00", "12:00"]])
-    );
+      // open 08:00-12:00, booked 13:00-13:45 (outside working hours, no effect)
+      // → free 08:00-12:00
+      "salon:availability:resource-1:location-1:2026-07-16":
+        day(1, [["08:00", "12:00"]]),
 
-    // open 11:00-19:00, break 14:30-15:30, booked 11:00-12:00
-    // → free 12:00-14:30, 15:30-19:00
-    expect(set).toHaveBeenCalledWith(
-      "salon:availability:resource-2:location-2:2026-07-15",
-      day(1, [["12:00", "14:30"], ["15:30", "19:00"]])
-    );
+      // open 11:00-19:00, break 14:30-15:30, booked 11:00-12:00
+      // → free 12:00-14:30, 15:30-19:00
+      "salon:availability:resource-2:location-2:2026-07-15":
+        day(1, [["12:00", "14:30"], ["15:30", "19:00"]]),
 
-    // open 09:00-20:00, booked 09:00-15:00 and 15:30-20:00
-    // → free 15:00-15:30
-    expect(set).toHaveBeenCalledWith(
-      "salon:availability:resource-2:location-4:2026-07-15",
-      day(1, [["15:00", "15:30"]])
-    );
+      // open 09:00-20:00, booked 09:00-15:00 and 15:30-20:00
+      // → free 15:00-15:30
+      "salon:availability:resource-2:location-4:2026-07-15":
+        day(1, [["15:00", "15:30"]]),
+    });
   });
 
   it("rejects a malformed booking with a ZodError before writing anything", async () => {
-    const set = mock(async () => "OK");
-    const client = { set } as unknown as RedisClientType;
+    const mSet = mock(async () => "OK");
+    const client = { mSet } as unknown as RedisClientType;
     const availability = new Availability(client, "salon");
 
     const bad = {
@@ -134,6 +125,6 @@ describe("Availability.cacheDisponibility", () => {
     };
 
     expect(availability.cacheDisponibility(bad)).rejects.toThrow(ZodError);
-    expect(set).not.toHaveBeenCalled();
+    expect(mSet).not.toHaveBeenCalled();
   });
 });

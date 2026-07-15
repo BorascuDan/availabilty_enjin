@@ -9,9 +9,11 @@ export const SLOTS_PER_DAY = 60 * 24 / SLOT_DURATION;
 
 export class Availability {
   private connection: Store;
+  private resource: string;
   //user redis connection
   constructor(connection: RedisClientType, resource: string) {
-    this.connection = new RedisStore(connection, resource);
+    this.connection = new RedisStore(connection);
+    this.resource = resource;
   }
 
   //set base availability based on schedule
@@ -48,18 +50,41 @@ export class Availability {
     return [startIndex, endIndex]
   }
 
+  //generate redis key
+  private generateKey = (
+    resourceId: string,
+    locationId: string,
+    date: string
+  ) => `${this.resource}:availability:${resourceId}:${locationId}:${date}`
+
   async cacheDisponibility (allResourcesDispoibility: Booking | unknown) {
+    //validate constrains
     const booking = BookingSchema.parse(allResourcesDispoibility);
+    //object for multiplexing in redis
+    let availability: { [key: string]: string } = {};
+   
+    //parse data with folowing steps:
+    //for a specific resource
     for ( const [resourceId, dateDisponibility] of Object.entries(booking) ) {
+      //for a date
       for ( const [date, locationDispoibility] of Object.entries(dateDisponibility) ) {
+        //for locations
         for ( const {schedules, bookedIntervals, locationId} of locationDispoibility ) {
-            let availability = new Array(SLOTS_PER_DAY).fill(0);
+            //day slots
+            let dayLocationAvailability = new Array(SLOTS_PER_DAY).fill(0);
             if (!schedules.length) continue;
-            this.setSchedule(availability, schedules);
-            if (bookedIntervals.length) this.setBooked(availability, bookedIntervals);
-            await this.connection.set(resourceId, locationId, date, availability);
+            //concat the schedules
+            this.setSchedule(dayLocationAvailability, schedules);
+            // add booking if it exists
+            if (bookedIntervals.length) this.setBooked(dayLocationAvailability, bookedIntervals);
+            
+            availability[
+              this.generateKey(resourceId, locationId, date)
+            ] = dayLocationAvailability.join("")
         }
       }
     }
+    //populate initial keys
+    await this.connection.multyleSet(availability)
   }
 }

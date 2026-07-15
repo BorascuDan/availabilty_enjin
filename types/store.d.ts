@@ -17,10 +17,5 @@ export type AvailabilityMap = {
 };
 
 export interface Store {
-  set(
-    resourceId: ResourceId,
-    locationId: LocationId,
-    date: DateKey,
-    slots: Slots
-  ): Promise<void>;
+  multyleSet(availability: { [key: string]: string }): Promise<void>;
 }
