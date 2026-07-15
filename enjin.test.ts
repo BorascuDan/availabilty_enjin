@@ -77,7 +77,7 @@ describe("Availability.cacheDisponibility", () => {
     //mocks a redis connection
     const mSet = mock(async () => "OK");
     const client = { mSet } as unknown as RedisClientType;
-    const availability = new Availability(client, "salon");
+    const availability = new Availability({connection: client, resource: "salon"});
 
     await availability.cacheDisponibility(booking);
 
@@ -114,7 +114,7 @@ describe("Availability.cacheDisponibility", () => {
   it("rejects a malformed booking with a ZodError before writing anything", async () => {
     const mSet = mock(async () => "OK");
     const client = { mSet } as unknown as RedisClientType;
-    const availability = new Availability(client, "salon");
+    const availability = new Availability({connection: client, resource: "salon"});
 
     const bad = {
       "resource-1": {

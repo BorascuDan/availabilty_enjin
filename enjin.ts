@@ -11,7 +11,9 @@ export class Availability {
   private connection: Store;
   private resource: string;
   //user redis connection
-  constructor(connection: RedisClientType, resource: string) {
+  constructor(
+    {connection, resource}: {connection: RedisClientType, resource: string}
+  ) {
     this.connection = new RedisStore(connection);
     this.resource = resource;
   }
