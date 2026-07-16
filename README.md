@@ -142,6 +142,131 @@ salon:availability:employee-1:location-2:2026-07-15
 
 For `location-1` the free (`0`) slots end up being exactly `09:00–09:30`, `10:15–12:00` and `13:00–17:00` — the working window minus the break and the existing appointment. For `location-2` it is simply `10:00–14:00`.
 
+### `checkSlot(slot)`
+
+Answers one question: **is this window free?** It reads the precomputed bitmap of `resource + location + date` and looks only at the slots the window actually occupies — one `GETRANGE`, no scan of the day, no database.
+
+```ts
+async checkSlot(slot: CheckSlot | unknown): Promise<boolean>
+```
+
+#### Input shape (`CheckSlot`)
+
+```ts
+type CheckSlot = {
+  resourceId: string;   // who
+  locationId: string;   // where
+  date: string;         // "YYYY-MM-DD"
+  start: string;        // "HH:MM"
+  end?: string;         // "HH:MM"
+  duration?: number;    // minutes
+};
+```
+
+`start` is always required, plus **exactly one** way to close the window: `end` or `duration`. If both are passed, **`end` wins** and `duration` is ignored.
+
+#### Validation rules (zod, checked before Redis is touched)
+
+| Field | Rule |
+| --- | --- |
+| `resourceId`, `locationId` | non-empty string |
+| `date` | `YYYY-MM-DD` (digit pattern only — calendar validity is not checked) |
+| `start`, `end` | `HH:MM`, from `00:00` up to `24:00` (a single-digit hour like `9:30` is also accepted) |
+| `duration` | positive integer, in minutes |
+| `end` / `duration` | at least one of the two must be present |
+| `end` (when present) | `start` must be before `end` **at 15-minute slot granularity** |
+
+If validation fails, the call throws a `ZodError` and **nothing** is read from Redis.
+
+#### How a window becomes a slot range
+
+The day is stored in 15-minute slots, so a window is checked as the slots it **occupies**. A window that ends exactly on a slot edge does not occupy the slot that edge opens — a `09:00–10:15` booking leaves the `10:15` slot free for the next one.
+
+With an explicit `end`:
+
+| `start` | `end` | slots checked | why |
+| --- | --- | --- | --- |
+| `09:00` | `10:15` | `09:00` → `10:00` | `10:15` lands on an edge, so it only opens the next slot |
+| `09:00` | `10:07` | `09:00` → `10:00` | `10:07` sits inside the `10:00` slot, which is therefore occupied |
+
+With a `duration`:
+
+| `start` | `duration` | slots checked | why |
+| --- | --- | --- | --- |
+| `09:00` | `45` | `09:00` → `09:30` | ends at `09:45`, on an edge |
+| `09:00` | `37` | `09:00` → `09:30` | ends at `09:37`, inside the `09:30` slot |
+| `09:00` | `15` | `09:00` only | fills exactly one slot |
+| `09:00` | `10` | `09:00` only | anything under a slot still occupies that slot |
+
+#### Answers
+
+| Returns | Meaning |
+| --- | --- |
+| `true` | every slot in the window is `0` — the window is **free** |
+| `false` | at least one slot in the window is `1` — the window is **taken** |
+
+`false` is a single verdict, not a reason: a slot is `1` whether it is outside working hours, inside a break, or already booked. `checkSlot` does not tell you which of the three, and does not tell you *which* slot caused it.
+
+It throws instead of returning a verdict in these cases:
+
+| Throws | When |
+| --- | --- |
+| `ZodError` | the input broke a validation rule above |
+| `Error: Requested key does not exists` | there is no key for that `resource + location + date` |
+| whatever your Redis client throws | the connection itself failed |
+
+A day that was never cached is therefore an **error, not a `false`** — the engine refuses to guess whether an unknown day is closed or simply not computed yet. Expect this after a key expires, before `cacheDisponibility` has run for that date, or on a typo in `resourceId` / `locationId` / `date`.
+#### Example calls
+
+Against the `employee-1` / `location-1` day cached above — open `09:00–17:00`, lunch `12:00–13:00`, booked `09:30–10:15`, so free at `09:00–09:30`, `10:15–12:00` and `13:00–17:00`:
+
+```ts
+// free: 10:15-11:00 sits in the gap after the existing appointment
+await availability.checkSlot({
+  resourceId: "employee-1",
+  locationId: "location-1",
+  date: "2026-07-15",
+  start: "10:15",
+  end: "11:00",
+}); // → true
+
+// taken: 45 minutes from 09:00 runs into the 09:30 appointment
+await availability.checkSlot({
+  resourceId: "employee-1",
+  locationId: "location-1",
+  date: "2026-07-15",
+  start: "09:00",
+  duration: 45,
+}); // → false
+
+// taken: the window crosses the lunch break
+await availability.checkSlot({
+  resourceId: "employee-1",
+  locationId: "location-1",
+  date: "2026-07-15",
+  start: "11:30",
+  end: "12:30",
+}); // → false
+
+// taken: 08:00 is outside the working window — same `false`, no reason attached
+await availability.checkSlot({
+  resourceId: "employee-1",
+  locationId: "location-1",
+  date: "2026-07-15",
+  start: "08:00",
+  duration: 30,
+}); // → false
+
+// throws: this day was never cached for location-3
+await availability.checkSlot({
+  resourceId: "employee-1",
+  locationId: "location-3",
+  date: "2026-07-15",
+  start: "10:00",
+  duration: 30,
+}); // → Error: Requested key does not exists
+```
+
 ## Development
 
 ```bash

@@ -1,0 +1,21 @@
+{
+  // Build-only config: emits dist/ for Node consumers.
+  // The base tsconfig stays bun-flavoured (noEmit) for dev and tests.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["enjin.ts", "redis.ts", "utils.ts", "types/**/*.ts"],
+  "exclude": ["**/*.test.ts", "node_modules", "dist"]
+}
