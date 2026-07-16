@@ -1,7 +1,7 @@
 import type {  RedisClientType } from "redis";
 import { RedisStore } from "./redis";
 import type { Store } from "./types/store";
-import { BookingSchema, type Booking, type Interval, type Schedules } from "./types/schemas";
+import { BookingSchema, CheckSlotSchema, type Booking, type CheckSlot, type Interval, type Schedules } from "./types/schemas";
 import { isNumber, minutesIndexOffset, slotHashing } from "./utils";
 
 export const SLOT_DURATION = 15
@@ -91,14 +91,9 @@ export class Availability {
     if (inserted != "OK") throw new Error("Failed to establish connection to redis")
   }
 
-  async checkSlot({
-    resourceId,
-    locationId,
-    date,
-    start,
-    end,
-    duration = 0
-  }: {resourceId: string, locationId: string, date: string, start: string, end: string, duration: number}) {
+  async checkSlot (slot: CheckSlot | unknown) {
+    //validate constrains
+    const { resourceId, locationId, date, start, end, duration } = CheckSlotSchema.parse(slot);
    // hash the start index
     const startIndex = slotHashing(start);
     let endIndex;
@@ -110,10 +105,10 @@ export class Availability {
       const upperBound = endMinutes % SLOT_DURATION
       //hash the end index
       endIndex = !upperBound ? slotHashing(end) - 1 : slotHashing(end);
-    } else {
+    } else if (isNumber(duration)) {
       //check the offset
       endIndex = startIndex + minutesIndexOffset(duration)
-   }
+   } else throw new Error("either end or duration must be provided")
 
    const slotKey = this.generateKey(resourceId, locationId, date)
    const slotsStatus = new Set(await this.connection.getSlots(slotKey, startIndex, endIndex))

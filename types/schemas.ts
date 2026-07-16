@@ -48,7 +48,28 @@ export const BookingSchema = z.record(
   )
 );
 
+// a slot check needs a start plus at least one bound: an explicit end or a duration
+// when both are present end wins
+export const CheckSlotSchema = z
+  .object({
+    resourceId: z.string().min(1),
+    locationId: z.string().min(1),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+    start: Time,
+    end: Time.optional(),
+    duration: z.number().int().positive().optional(),
+  })
+  .refine(
+    (s) => s.end !== undefined || s.duration !== undefined,
+    "either end or duration must be provided"
+  )
+  .refine(
+    (s) => s.end === undefined || startBeforeEnd({ start: s.start, end: s.end }),
+    "start must be before end"
+  );
+
 export type Interval = z.infer<typeof IntervalSchema>;
+export type CheckSlot = z.infer<typeof CheckSlotSchema>;
 export type AvailableSchedule = z.infer<typeof AvailableScheduleSchema>;
 export type BlockedSchedule = z.infer<typeof BlockedScheduleSchema>;
 export type Schedule = AvailableSchedule | BlockedSchedule;
