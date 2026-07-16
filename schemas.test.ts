@@ -9,6 +9,43 @@ import {
 const available = { start: "09:00", end: "17:00", canDoSchedule: true };
 const blocked = { start: "12:00", end: "13:00", canDoSchedule: false };
 
+describe("slot alignment", () => {
+  it("accepts an interval sitting on slot edges", () => {
+    expect(IntervalSchema.safeParse({ start: "09:00", end: "09:15" }).success).toBe(true);
+  });
+
+  it("rejects a start off a slot edge", () => {
+    expect(IntervalSchema.safeParse({ start: "09:05", end: "09:30" }).success).toBe(false);
+  });
+
+  it("rejects an end off a slot edge", () => {
+    expect(IntervalSchema.safeParse({ start: "12:00", end: "12:50" }).success).toBe(false);
+  });
+
+  it("rejects an interval shorter than a slot even when it straddles an edge", () => {
+    expect(IntervalSchema.safeParse({ start: "09:10", end: "09:20" }).success).toBe(false);
+  });
+
+  it("rejects an unaligned schedule", () => {
+    expect(
+      SchedulesSchema.safeParse([{ start: "09:05", end: "17:00", canDoSchedule: true }]).success
+    ).toBe(false);
+  });
+
+  //alignment guards what gets written, not what gets asked
+  it("still lets checkSlot ask about an unaligned end", () => {
+    expect(
+      CheckSlotSchema.safeParse({
+        resourceId: "employee-1",
+        locationId: "location-1",
+        date: "2026-07-20",
+        start: "09:00",
+        end: "10:07",
+      }).success
+    ).toBe(true);
+  });
+});
+
 describe("SchedulesSchema", () => {
   it("accepts a single available schedule", () => {
     expect(SchedulesSchema.safeParse([available]).success).toBe(true);

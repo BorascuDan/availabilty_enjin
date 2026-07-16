@@ -1,10 +1,14 @@
 import { SLOT_DURATION } from "./enjin";
 
+//converts "HH:MM" to minutes since midnight
+export const toMinutes = (time: string): number => {
+  const [hour, minutes] = time.split(":").map(Number) as [number, number];
+  return hour * 60 + minutes;
+}
+
 //hashes the time to its index
 export const slotHashing = (time: string): number => {
-  const [hour, minutes] = time.split(":").map(Number) as [number, number];
-  const totalMinutes = hour * 60 + minutes;
-  return Math.floor(totalMinutes / SLOT_DURATION)
+  return Math.floor(toMinutes(time) / SLOT_DURATION)
 }
 
 export const minutesIndexOffset = (duration: number): number => {

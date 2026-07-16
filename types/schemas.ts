@@ -1,12 +1,21 @@
 import { z } from "zod";
-import { slotHashing } from "../utils";
+import { slotHashing, toMinutes } from "../utils";
+import { SLOT_DURATION } from "../enjin";
 
 // "HH:MM" and accepts from 00:00 to 24:00
 const Time = z
   .string()
   .regex(/^(?:[01]?\d|2[0-3]):[0-5]\d$|^24:00$/, "time must be HH:MM");
 
-const intervalFields = { start: Time, end: Time };
+//a written interval has to land on a slot edge: the bitmap has no room for a
+//remainder, so an unaligned end drops its last slot and hands it out while taken
+//kept off the read path on purpose, checkSlot rounds an unaligned query instead
+const SlotAlignedTime = Time.refine(
+  (t) => toMinutes(t) % SLOT_DURATION === 0,
+  "time must align to a slot edge"
+);
+
+const intervalFields = { start: SlotAlignedTime, end: SlotAlignedTime };
 
 //start of a boocked type/schedule needs to be smaller then end
 const startBeforeEnd = (i: { start: string; end: string }) =>
