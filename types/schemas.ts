@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { slotHashing, toMinutes } from "../utils";
-import { SLOT_DURATION } from "../enjin";
+import { toMinutes } from "../utils.js";
+import { SLOT_DURATION } from "../enjin.js";
 
 // "HH:MM" and accepts from 00:00 to 24:00
 const Time = z
@@ -18,8 +18,10 @@ const SlotAlignedTime = Time.refine(
 const intervalFields = { start: SlotAlignedTime, end: SlotAlignedTime };
 
 //start of a boocked type/schedule needs to be smaller then end
+//compared in minutes so a read can ask about a window inside a single slot,
+//the write path gets its granularity from SlotAlignedTime instead
 const startBeforeEnd = (i: { start: string; end: string }) =>
-  slotHashing(i.start) < slotHashing(i.end);
+  toMinutes(i.start) < toMinutes(i.end);
 
 //validate on each input that inherit intervalFielad
 export const IntervalSchema = z

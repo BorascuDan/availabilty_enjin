@@ -1,9 +1,9 @@
 import { describe, it, expect, mock } from "bun:test";
 import type { RedisClientType } from "redis";
 import { ZodError } from "zod";
-import { Availability, SLOTS_PER_DAY } from "./enjin";
-import type { Booking } from "./types/schemas";
-import { slotHashing } from "./utils";
+import { Availability, SLOTS_PER_DAY } from "./enjin.js";
+import type { Booking } from "./types/schemas.js";
+import { slotHashing } from "./utils.js";
 
 const day = (base: 0 | 1, flipped: Array<[string, string]>): string => {
   const slots: number[] = new Array(SLOTS_PER_DAY).fill(base);

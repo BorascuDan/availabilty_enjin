@@ -4,7 +4,7 @@ import {
   CheckSlotSchema,
   SchedulesSchema,
   IntervalSchema,
-} from "./types/schemas";
+} from "./types/schemas.js";
 
 const available = { start: "09:00", end: "17:00", canDoSchedule: true };
 const blocked = { start: "12:00", end: "13:00", canDoSchedule: false };
@@ -41,6 +41,19 @@ describe("slot alignment", () => {
         date: "2026-07-20",
         start: "09:00",
         end: "10:07",
+      }).success
+    ).toBe(true);
+  });
+
+  //a window living inside one slot is a fair question, only writing it is not
+  it("lets checkSlot ask about a window inside a single slot", () => {
+    expect(
+      CheckSlotSchema.safeParse({
+        resourceId: "employee-1",
+        locationId: "location-1",
+        date: "2026-07-20",
+        start: "09:00",
+        end: "09:12",
       }).success
     ).toBe(true);
   });

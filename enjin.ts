@@ -1,8 +1,30 @@
 import type {  RedisClientType } from "redis";
-import { RedisStore } from "./redis";
-import type { Store } from "./types/store";
-import { BookingSchema, CheckSlotSchema, type Booking, type CheckSlot, type Interval, type Schedules } from "./types/schemas";
-import { isNumber, minutesIndexOffset, slotHashing } from "./utils";
+import { RedisStore } from "./redis.js";
+import type { Store } from "./types/store.js";
+import { BookingSchema, CheckSlotSchema, type Booking, type CheckSlot, type Interval, type Schedules } from "./types/schemas.js";
+import { isNumber, minutesIndexOffset, slotHashing } from "./utils.js";
+
+export { RedisStore } from "./redis.js";
+export type {
+  Booking,
+  CheckSlot,
+  Interval,
+  Schedule,
+  Schedules,
+  AvailableSchedule,
+  BlockedSchedule,
+  LocationDispoibility,
+} from "./types/schemas.js";
+export type {
+  Store,
+  Slots,
+  DateKey,
+  LocationId,
+  ResourceId,
+  DateAvailability,
+  LocationAvailability,
+  AvailabilityMap,
+} from "./types/store.js";
 
 export const SLOT_DURATION = 15
 export const SLOTS_PER_DAY = 60 * 24 / SLOT_DURATION;

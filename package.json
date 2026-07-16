@@ -1,20 +1,65 @@
 {
-  "name": "availabilty_enjin",
-  "module": "index.ts",
+  "name": "availability-enjin",
+  "version": "0.1.0",
+  "description": "Precomputed resource availability, served from Redis in O(1).",
+  "license": "MIT",
+  "author": "BorascuDan",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BorascuDan/availabilty_enjin.git"
+  },
+  "homepage": "https://github.com/BorascuDan/availabilty_enjin#readme",
+  "bugs": {
+    "url": "https://github.com/BorascuDan/availabilty_enjin/issues"
+  },
+  "keywords": [
+    "availability",
+    "booking",
+    "scheduling",
+    "appointments",
+    "slots",
+    "calendar",
+    "redis"
+  ],
+  "main": "./dist/enjin.js",
+  "module": "./dist/enjin.js",
+  "types": "./dist/enjin.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/enjin.d.ts",
+      "default": "./dist/enjin.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "ci": "bun run typecheck && bun test"
-  },
-  "devDependencies": {
-    "@types/bun": "latest"
+    "ci": "bun run typecheck && bun test",
+    "prepublishOnly": "bun run ci && bun run build"
   },
   "peerDependencies": {
+    "redis": "^4 || ^5 || ^6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "redis": "^6.1.0",
     "typescript": "^5"
   },
   "dependencies": {
-    "redis": "^6.1.0",
     "zod": "^4.4.3"
   }
 }

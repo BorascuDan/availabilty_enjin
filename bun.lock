@@ -5,14 +5,15 @@
     "": {
       "name": "availabilty_enjin",
       "dependencies": {
-        "redis": "^6.1.0",
         "zod": "^4.4.3",
       },
       "devDependencies": {
         "@types/bun": "latest",
+        "redis": "^6.1.0",
+        "typescript": "^5",
       },
       "peerDependencies": {
-        "typescript": "^5",
+        "redis": "^4 || ^5 || ^6",
       },
     },
   },

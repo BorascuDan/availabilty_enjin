@@ -1,6 +1,16 @@
-# availabilty_enjin
+# availability-enjin
 
 **Precomputed resource availability, served from Redis in O(1).**
+
+## Install
+
+```sh
+npm install availability-enjin redis
+# or
+bun add availability-enjin redis
+```
+
+`redis` is a peer dependency — the engine never creates a connection, it reuses yours.
 
 ## The goal
 
@@ -35,7 +45,7 @@ The `Availability` class reuses your own Redis connection (it never creates one)
 
 ```ts
 import { createClient, type RedisClientType } from "redis";
-import { Availability } from "./enjin";
+import { Availability } from "availability-enjin";
 
 const client = createClient({ url: "redis://localhost:6379" }) as RedisClientType;
 await client.connect();
@@ -99,11 +109,29 @@ type BlockedSchedule   = { start: string; end: string; canDoSchedule: false };
 | `resourceId`, `locationId` | non-empty string |
 | date keys | `YYYY-MM-DD` (digit pattern only — calendar validity is not checked) |
 | `start`, `end` | `HH:MM`, from `00:00` up to `24:00` (a single-digit hour like `9:30` is also accepted) |
-| every interval / schedule | `start` must be before `end` (at 15-minute slot granularity) |
+| `start`, `end` | must land on a slot edge — the minutes have to be a multiple of `SLOT_DURATION = 15`, so `09:00`, `09:15`, `09:30`, `09:45` |
+| every interval / schedule | `start` must be before `end` |
 | `schedules` | 1 entry → must be `canDoSchedule: true`; 2 entries → one `true` + one `false`, in any order |
 | `bookedIntervals` | array of intervals, empty is fine |
 
 If validation fails, the call throws a `ZodError` and **nothing** is written to Redis.
+
+#### Why caching needs the times on a slot edge
+
+A day is 96 slots of `SLOT_DURATION = 15` minutes, so the bitmap has nowhere to put a remainder. Caching `12:00`–`12:50` would fill the slots for `12:00`, `12:15` and `12:30`, then quietly drop the last 5 minutes — leaving `12:45`–`13:00` marked free while the resource is actually busy, and handing that slot to the next booking. Rather than round and guess, `cacheDisponibility` rejects it:
+
+```ts
+// throws a ZodError — 50 minutes does not land on a slot edge
+await availability.cacheDisponibility({
+  "employee-1": { "2026-07-20": [{
+    locationId: "location-1",
+    schedules: [{ start: "09:00", end: "17:00", canDoSchedule: true }],
+    bookedIntervals: [{ start: "12:00", end: "12:50" }],  // <- 12:45 or 13:00
+  }]},
+});
+```
+
+**This applies to writing only.** `checkSlot` takes any minutes you like — see below.
 
 #### Example call
 
@@ -172,11 +200,25 @@ type CheckSlot = {
 | `resourceId`, `locationId` | non-empty string |
 | `date` | `YYYY-MM-DD` (digit pattern only — calendar validity is not checked) |
 | `start`, `end` | `HH:MM`, from `00:00` up to `24:00` (a single-digit hour like `9:30` is also accepted) |
-| `duration` | positive integer, in minutes |
+| `start`, `end` | **any** minutes — unlike caching, they do not have to sit on a slot edge |
+| `duration` | positive integer, in minutes — any value, `37` is as valid as `45` |
 | `end` / `duration` | at least one of the two must be present |
 | `end` (when present) | `start` must be before `end` **at 15-minute slot granularity** |
 
 If validation fails, the call throws a `ZodError` and **nothing** is read from Redis.
+
+#### Checking is not caching: any minutes work here
+
+Caching writes to the bitmap, so it insists on slot edges. Checking only **reads** it, so it takes whatever you ask and rounds to the slots your window touches:
+
+```ts
+// all fine — none of these have to land on 09:15, 09:30, 09:45…
+await availability.checkSlot({ ...who, start: "09:00", end: "09:12" });   // reads the 09:00 slot
+await availability.checkSlot({ ...who, start: "09:07", end: "09:52" });   // reads 09:00 → 09:45
+await availability.checkSlot({ ...who, start: "09:00", duration: 37 });   // reads 09:00 → 09:30
+```
+
+Asking *"is 09:00–09:12 free?"* is answered by the `09:00` slot, because that is the slot those 12 minutes live in.
 
 #### How a window becomes a slot range
 

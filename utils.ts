@@ -1,4 +1,4 @@
-import { SLOT_DURATION } from "./enjin";
+import { SLOT_DURATION } from "./enjin.js";
 
 //converts "HH:MM" to minutes since midnight
 export const toMinutes = (time: string): number => {

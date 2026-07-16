@@ -1,8 +1,5 @@
 import type {  RedisClientType } from "redis";
-import type {
-  Store,
-  Slots,
-} from "./types/store";
+import type { Store } from "./types/store.js";
 
 export class RedisStore implements Store {
   #client: RedisClientType;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { slotHashing, isNumber } from "./utils";
+import { slotHashing, isNumber } from "./utils.js";
 
 describe("slotHashing", () => {
   it("maps a time to its 15-minute slot index", () => {
