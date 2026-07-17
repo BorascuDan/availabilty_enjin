@@ -113,10 +113,10 @@ export class Availability {
     if (inserted != "OK") throw new Error("Failed to establish connection to redis")
   }
 
-  async checkSlot (slot: CheckSlot | unknown) {
+  private getSlotKeyAndIndex (slot: CheckSlot | unknown): { slotKey: string; startIndex: number; endIndex: number } {
     //validate constrains
     const { resourceId, locationId, date, start, end, duration } = CheckSlotSchema.parse(slot);
-   // hash the start index
+
     const startIndex = slotHashing(start);
     let endIndex;
     if (end) {
@@ -130,10 +130,27 @@ export class Availability {
     } else if (isNumber(duration)) {
       //check the offset
       endIndex = startIndex + minutesIndexOffset(duration)
-   } else throw new Error("either end or duration must be provided")
+      //upper bound last index to last element
+      if (endIndex >= SLOTS_PER_DAY) endIndex = SLOTS_PER_DAY - 1;
+    } else throw new Error("either end or duration must be provided")
 
-   const slotKey = this.generateKey(resourceId, locationId, date)
-   const slotsStatus = new Set(await this.connection.getSlots(slotKey, startIndex, endIndex))
-   return !slotsStatus.has("1")
+    const slotKey = this.generateKey(resourceId, locationId, date)
+
+    return { slotKey, startIndex, endIndex }
+  }
+
+  async checkSlot (slot: CheckSlot | unknown) {
+    const { slotKey: key, startIndex: start, endIndex: end } = this.getSlotKeyAndIndex(slot)
+    const slotsStatus = new Set(await this.connection.getSlots(key, start, end))
+    return !slotsStatus.has("1")
+  }
+
+  async changeSlot (slot: CheckSlot, type: "occupy" | "free") {
+    const { slotKey: key, startIndex: start, endIndex: end } = this.getSlotKeyAndIndex(slot)
+    if (type === "occupy") {
+      const isFree = this.checkSlot(slot);
+      if (!isFree) throw new Error('Slot got booked in the meantime')
+    }
+    await this.connection.setSlots(key, start, end, type === "occupy" ? 1 : 0)
   }
 }

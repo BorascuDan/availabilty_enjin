@@ -138,7 +138,8 @@ describe("Availability.checkSlot", () => {
     const getRange = mock(async (_key: string, start: number, end: number) =>
       bitmap.slice(start, end + 1)
     );
-    return { getRange, client: { getRange } as unknown as RedisClientType };
+    const STRLEN = mock(async (_key: string) => bitmap.length);
+    return { getRange, client: { getRange, STRLEN } as unknown as RedisClientType };
   };
 
   const freeDay = day(0, []);
@@ -185,6 +186,46 @@ describe("Availability.checkSlot", () => {
       await availability.checkSlot({ ...slot, start: "09:00", duration: 45 });
 
       expect(getRange).toHaveBeenCalledWith(key, slotHashing("09:00"), slotHashing("09:30"));
+    });
+
+    it("bounds a duration overflowing past midnight to the last slot of the day", async () => {
+      const { getRange, client } = clientFor(freeDay);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      // 90 minutes from 23:00 ends at 00:30 the next day → clamped to the 23:45 slot,
+      // the last index of the day
+      await availability.checkSlot({ ...slot, start: "23:00", duration: 90 });
+
+      expect(getRange).toHaveBeenCalledWith(key, slotHashing("23:00"), SLOTS_PER_DAY - 1);
+      expect(SLOTS_PER_DAY - 1).toBe(slotHashing("23:45"));
+    });
+  });
+
+  //the existence guard runs before any range is read, so a bad STRLEN must
+  //reject the call and keep getRange untouched
+  describe("existence guard", () => {
+    const guardedClientFor = (valueLength: number) => {
+      const getRange = mock(async () => "");
+      const STRLEN = mock(async (_key: string) => valueLength);
+      return { getRange, client: { getRange, STRLEN } as unknown as RedisClientType };
+    };
+
+    it("rejects when the key does not exist", async () => {
+      const { getRange, client } = guardedClientFor(0);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      expect(availability.checkSlot({ ...slot, start: "09:00", end: "10:15" }))
+        .rejects.toThrow("key does not exists");
+      expect(getRange).not.toHaveBeenCalled();
+    });
+
+    it("rejects when the stored day holds the wrong number of slots", async () => {
+      const { getRange, client } = guardedClientFor(SLOTS_PER_DAY + 1);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      expect(availability.checkSlot({ ...slot, start: "09:00", end: "10:15" }))
+        .rejects.toThrow("There are more then wanted slots, data might be corrupted");
+      expect(getRange).not.toHaveBeenCalled();
     });
   });
 

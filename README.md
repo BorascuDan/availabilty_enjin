@@ -257,7 +257,7 @@ It throws instead of returning a verdict in these cases:
 | `Error: Requested key does not exists` | there is no key for that `resource + location + date` |
 | whatever your Redis client throws | the connection itself failed |
 
-A day that was never cached is therefore an **error, not a `false`** — the engine refuses to guess whether an unknown day is closed or simply not computed yet. Expect this after a key expires, before `cacheDisponibility` has run for that date, or on a typo in `resourceId` / `locationId` / `date`.
+A day that was never cached is therefore an **error, not a `false`** — the engine refuses to guess whether an unknown day is closed or simply not computed yet.
 #### Example calls
 
 Against the `employee-1` / `location-1` day cached above — open `09:00–17:00`, lunch `12:00–13:00`, booked `09:30–10:15`, so free at `09:00–09:30`, `10:15–12:00` and `13:00–17:00`:
