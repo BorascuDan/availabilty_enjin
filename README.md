@@ -309,6 +309,107 @@ await availability.checkSlot({
 }); // → Error: Requested key does not exists
 ```
 
+### `changeSlot(slot, type)`
+
+Writes a verdict back into the bitmap: marks a window as **booked** (`"occupy"`) or **released** (`"free"`). Use it after a booking is confirmed or cancelled to keep the cache in sync without recomputing the whole day.
+
+```ts
+async changeSlot(slot: CheckSlot, type: "occupy" | "free"): Promise<void>
+```
+
+The `slot` argument is the exact same shape as `checkSlot` — same `CheckSlot` type, same zod validation, same `end`-or-`duration` rule, same *any-minutes-welcome* rounding. Whatever slots `checkSlot` would read for a window, `changeSlot` writes.
+
+#### The two directions
+
+| `type` | What it does |
+| --- | --- |
+| `"occupy"` | first re-checks the window with `checkSlot`; if any slot is already `1`, it throws `Error: Slot got booked in the meantime` and writes **nothing**. Otherwise every slot in the window becomes `1`. |
+| `"free"` | every slot in the window becomes `0` — no check first. Freeing an already-free window is a harmless no-op. |
+
+The `"occupy"` pre-check is a **best-effort guard, not a transaction**: the check and the write are two Redis commands, so two callers racing for the same window can still, in a narrow window, both pass the check. For a single-writer setup (one API instance confirming bookings) it is exactly the double-check you want; for heavy concurrency, serialize confirmations on your side.
+
+Note that `"free"` writes `0` unconditionally — including slots that are `1` because they sit outside working hours or inside a break, not because of a booking. Free exactly the window you previously occupied, not a larger one.
+
+#### Errors
+
+| Throws | When |
+| --- | --- |
+| `ZodError` | the input broke a `CheckSlot` validation rule |
+| `Error: Slot got booked in the meantime` | `type: "occupy"` and the window is no longer fully free |
+| `Error: key does not exists` | there is no cached day for that `resource + location + date` — cache it first with `cacheDisponibility` |
+| whatever your Redis client throws | the connection itself failed |
+
+#### Example calls
+
+Against the same `employee-1` / `location-1` day — free at `09:00–09:30`, `10:15–12:00` and `13:00–17:00`:
+
+```ts
+const slot = {
+  resourceId: "employee-1",
+  locationId: "location-1",
+  date: "2026-07-15",
+  start: "10:15",
+  end: "11:00",
+};
+
+// the customer confirmed — take the window
+await availability.changeSlot(slot, "occupy");
+await availability.checkSlot(slot); // → false, it is booked now
+
+// trying to take it again fails loudly instead of double-booking
+await availability.changeSlot(slot, "occupy");
+// → Error: Slot got booked in the meantime
+
+// the customer cancelled — give the window back
+await availability.changeSlot(slot, "free");
+await availability.checkSlot(slot); // → true again
+```
+
+## Other exports
+
+Beyond the `Availability` class, the package exports:
+
+### Constants
+
+```ts
+import { SLOT_DURATION, SLOTS_PER_DAY } from "availability-enjin";
+
+SLOT_DURATION // 15  — minutes per slot
+SLOTS_PER_DAY // 96  — slots in a day (60 * 24 / SLOT_DURATION)
+```
+
+Useful when you build inputs programmatically — e.g. snapping user-picked times to `SLOT_DURATION` before caching.
+
+### `RedisStore` and the `Store` interface
+
+`Availability` talks to Redis through a small `Store` interface, and `RedisStore` is the implementation it wraps your client in:
+
+```ts
+interface Store {
+  multyleSet(availability: { [key: string]: string }): Promise<string>;
+  getSlots(key: string, start: number, end: number): Promise<string>;
+  setSlots(key: string, start: number, end: number, value: 0 | 1): Promise<void>;
+}
+```
+
+Both are exported for advanced use (reading a bitmap directly, or as the seam for the planned in-memory store), but for normal usage you never touch them — the constructor takes your raw Redis client.
+
+### Types
+
+All input/output types are exported for your own signatures:
+
+```ts
+import type {
+  Booking, CheckSlot, Interval,            // API inputs
+  Schedule, Schedules,
+  AvailableSchedule, BlockedSchedule,
+  LocationDispoibility,                    // one entry of a date's location array
+  Store, Slots,                            // store layer
+  ResourceId, LocationId, DateKey,
+  DateAvailability, LocationAvailability, AvailabilityMap,
+} from "availability-enjin";
+```
+
 ## Development
 
 ```bash

@@ -148,7 +148,7 @@ export class Availability {
   async changeSlot (slot: CheckSlot, type: "occupy" | "free") {
     const { slotKey: key, startIndex: start, endIndex: end } = this.getSlotKeyAndIndex(slot)
     if (type === "occupy") {
-      const isFree = this.checkSlot(slot);
+      const isFree = await this.checkSlot(slot);
       if (!isFree) throw new Error('Slot got booked in the meantime')
     }
     await this.connection.setSlots(key, start, end, type === "occupy" ? 1 : 0)
