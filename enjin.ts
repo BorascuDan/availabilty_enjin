@@ -1,7 +1,7 @@
 import type {  RedisClientType } from "redis";
 import { RedisStore } from "./redis.js";
 import type { Store } from "./types/store.js";
-import { BookingSchema, CheckSlotSchema, type Booking, type CheckSlot, type Interval, type Schedules } from "./types/schemas.js";
+import { BookingSchema, CheckSlotSchema, DeleteDisponibilitySchema, type Booking, type CheckSlot, type DeleteDisponibility, type Interval, type Schedules } from "./types/schemas.js";
 import { isNumber, minutesIndexOffset, slotHashing } from "./utils.js";
 
 export { RedisStore } from "./redis.js";
@@ -152,5 +152,13 @@ export class Availability {
       if (!isFree) throw new Error('Slot got booked in the meantime')
     }
     await this.connection.setSlots(key, start, end, type === "occupy" ? 1 : 0)
+  }
+
+  async deleteDisponibility (slots: DeleteDisponibility | unknown) {
+    //validate constrains
+    const keys = DeleteDisponibilitySchema.parse(slots).map(
+      ({resourceId, locationId, date}) => this.generateKey(resourceId, locationId, date)
+    )
+    return this.connection.deleteSlot(keys)
   }
 }

@@ -40,4 +40,8 @@ export class RedisStore implements Store {
     const length = await this.#client.setRange(key, start, elements);
     if (length !== SLOTS_PER_DAY) throw new Error("Something went wrong, your data may be corrupted");
   }
+
+  async deleteSlot(keys: Array<string>): Promise<number> {
+    return this.#client.del(keys)
+  }
 }

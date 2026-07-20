@@ -79,6 +79,16 @@ export const CheckSlotSchema = z
     "start must be before end"
   );
 
+export const DeleteDisponibilitySchema = z
+  .array(
+    z.object({
+      resourceId: z.string().min(1),
+      locationId: z.string().min(1),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+    })
+  )
+  .min(1, "at least one slot must be provided");
+
 export type Interval = z.infer<typeof IntervalSchema>;
 export type CheckSlot = z.infer<typeof CheckSlotSchema>;
 export type AvailableSchedule = z.infer<typeof AvailableScheduleSchema>;
@@ -87,3 +97,4 @@ export type Schedule = AvailableSchedule | BlockedSchedule;
 export type Schedules = z.infer<typeof SchedulesSchema>;
 export type LocationDispoibility = z.infer<typeof LocationDispoibilitySchema>;
 export type Booking = z.infer<typeof BookingSchema>;
+export type DeleteDisponibility = z.infer<typeof DeleteDisponibilitySchema>;
