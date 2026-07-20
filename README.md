@@ -365,6 +365,70 @@ await availability.changeSlot(slot, "free");
 await availability.checkSlot(slot); // → true again
 ```
 
+### `deleteDisponibility(slots)`
+
+Removes cached days from Redis. Hand it the `resource + location + date` combinations you no longer need — days in the past, a resource that left, a location that closed — and every matching key is deleted in **one `DEL` call**.
+
+```ts
+async deleteDisponibility(slots: DeleteDisponibility | unknown): Promise<number>
+```
+
+It returns the number of keys Redis actually deleted.
+
+#### Input shape (`DeleteDisponibility`)
+
+```ts
+type DeleteDisponibility = Array<{
+  resourceId: string;   // who
+  locationId: string;   // where
+  date: string;         // "YYYY-MM-DD"
+}>;
+```
+
+Each entry names exactly one cached day — the same three coordinates that form a key everywhere else in the engine.
+
+#### Validation rules (zod, checked before Redis is touched)
+
+| Field | Rule |
+| --- | --- |
+| the array itself | at least one entry |
+| `resourceId`, `locationId` | non-empty string |
+| `date` | `YYYY-MM-DD` (digit pattern only — calendar validity is not checked) |
+
+If validation fails, the call throws a `ZodError` and **nothing** is deleted.
+
+#### Deleting is idempotent
+
+`DEL` simply ignores keys that do not exist, so deleting a day that was never cached (or already deleted) is a harmless no-op — unlike `checkSlot`, nothing throws. The return value tells you how many keys really existed:
+
+```ts
+await availability.deleteDisponibility([
+  { resourceId: "employee-1", locationId: "location-1", date: "2026-07-15" }, // cached above
+  { resourceId: "employee-1", locationId: "location-9", date: "2026-07-15" }, // never cached
+]); // → 1  — only the first key existed
+```
+
+A return value smaller than the number of entries you passed is therefore not an error — it just means some of those days were never cached.
+
+#### Errors
+
+| Throws | When |
+| --- | --- |
+| `ZodError` | the input broke a validation rule above — empty array, missing field, malformed date |
+| whatever your Redis client throws | the connection itself failed |
+
+#### Example call
+
+```ts
+// a nightly cleanup: drop yesterday's days for every location
+await availability.deleteDisponibility([
+  { resourceId: "employee-1", locationId: "location-1", date: "2026-07-14" },
+  { resourceId: "employee-1", locationId: "location-2", date: "2026-07-14" },
+]); // → 2
+```
+
+Both keys go in a single `DEL` — one round trip regardless of how many entries you pass.
+
 ## Other exports
 
 Beyond the `Availability` class, the package exports:
@@ -389,6 +453,7 @@ interface Store {
   multyleSet(availability: { [key: string]: string }): Promise<string>;
   getSlots(key: string, start: number, end: number): Promise<string>;
   setSlots(key: string, start: number, end: number, value: 0 | 1): Promise<void>;
+  deleteSlot(keys: Array<string>): Promise<number>;
 }
 ```
 
@@ -400,7 +465,8 @@ All input/output types are exported for your own signatures:
 
 ```ts
 import type {
-  Booking, CheckSlot, Interval,            // API inputs
+  Booking, CheckSlot, DeleteDisponibility, // API inputs
+  Interval,
   Schedule, Schedules,
   AvailableSchedule, BlockedSchedule,
   LocationDispoibility,                    // one entry of a date's location array

@@ -8,6 +8,7 @@ export { RedisStore } from "./redis.js";
 export type {
   Booking,
   CheckSlot,
+  DeleteDisponibility,
   Interval,
   Schedule,
   Schedules,
