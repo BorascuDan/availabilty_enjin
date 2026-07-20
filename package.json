@@ -1,6 +1,6 @@
 {
   "name": "availability-enjin",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Precomputed resource availability, served from Redis in O(1).",
   "license": "MIT",
   "author": "BorascuDan",
