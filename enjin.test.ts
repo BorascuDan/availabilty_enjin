@@ -264,6 +264,168 @@ describe("Availability.checkSlot", () => {
   });
 });
 
+describe("Availability.changeSlot", () => {
+  const key = "salon:availability:resource-1:location-1:2026-07-15";
+  const slot = { resourceId: "resource-1", locationId: "location-1", date: "2026-07-15" };
+  const asked = { ...slot, start: "09:00", end: "10:15" };
+
+  //mocks a redis connection: getRange backs the occupy pre-check, eval runs the
+  //atomic set-slot script and answers with a verdict code
+  const clientFor = (bitmap: string, scriptResult: number = 1) => {
+    const getRange = mock(async (_key: string, start: number, end: number) =>
+      bitmap.slice(start, end + 1)
+    );
+    const STRLEN = mock(async (_key: string) => bitmap.length);
+    const evalScript = mock(async () => scriptResult);
+    return {
+      getRange,
+      evalScript,
+      client: { getRange, STRLEN, eval: evalScript } as unknown as RedisClientType,
+    };
+  };
+
+  const freeDay = day(0, []);
+  const takenDay = day(1, []);
+
+  describe("occupy", () => {
+    it("verifies the range is free, then flips it in a single script call", async () => {
+      const { getRange, evalScript, client } = clientFor(freeDay);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      await availability.changeSlot(asked, "occupy");
+
+      //the pre-check reads the exact range the script writes afterwards
+      expect(getRange).toHaveBeenCalledWith(key, slotHashing("09:00"), slotHashing("10:00"));
+      expect(evalScript).toHaveBeenCalledTimes(1);
+      expect(evalScript).toHaveBeenCalledWith(expect.any(String), {
+        keys: [key],
+        arguments: [
+          String(slotHashing("09:00")),
+          String(slotHashing("10:00")),
+          "1",
+          String(SLOTS_PER_DAY),
+        ],
+      });
+    });
+
+    it("bounds a duration-based booking the same way checkSlot does", async () => {
+      const { evalScript, client } = clientFor(freeDay);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      // 45 minutes from 09:00 ends at 09:45, which opens a slot the booking never occupies
+      await availability.changeSlot({ ...slot, start: "09:00", duration: 45 }, "occupy");
+
+      expect(evalScript).toHaveBeenCalledWith(expect.any(String), {
+        keys: [key],
+        arguments: [
+          String(slotHashing("09:00")),
+          String(slotHashing("09:30")),
+          "1",
+          String(SLOTS_PER_DAY),
+        ],
+      });
+    });
+
+    it("rejects when a slot in the range is already taken and never runs the script", async () => {
+      const { evalScript, client } = clientFor(day(0, [["09:30", "09:45"]]));
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      await expect(availability.changeSlot(asked, "occupy"))
+        .rejects.toThrow("Slot got booked in the meantime");
+      expect(evalScript).not.toHaveBeenCalled();
+    });
+
+    it("ignores taken slots outside the range", async () => {
+      // 10:15 is taken but only opens the slot after the booking, so it must not block it
+      const { evalScript, client } = clientFor(day(0, [["08:00", "09:00"], ["10:15", "11:00"]]));
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      await availability.changeSlot(asked, "occupy");
+
+      expect(evalScript).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("free", () => {
+    it("flips the range back without a pre-check", async () => {
+      const { getRange, evalScript, client } = clientFor(takenDay);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      await availability.changeSlot(asked, "free");
+
+      //freeing must not go through checkSlot, only through the script
+      expect(getRange).not.toHaveBeenCalled();
+      expect(evalScript).toHaveBeenCalledTimes(1);
+      expect(evalScript).toHaveBeenCalledWith(expect.any(String), {
+        keys: [key],
+        arguments: [
+          String(slotHashing("09:00")),
+          String(slotHashing("10:00")),
+          "0",
+          String(SLOTS_PER_DAY),
+        ],
+      });
+    });
+  });
+
+  //the script re-checks inside redis, so its verdict codes must surface even
+  //when the optimistic pre-check passed
+  describe("script verdicts", () => {
+    it("surfaces a race the atomic script catches after the pre-check passed", async () => {
+      const { client } = clientFor(freeDay, 0);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      await expect(availability.changeSlot(asked, "occupy"))
+        .rejects.toThrow("One or more requested slots are already occupied");
+    });
+
+    it("rejects when the availability is missing or has the wrong length", async () => {
+      const { client } = clientFor(takenDay, -1);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      await expect(availability.changeSlot(asked, "free"))
+        .rejects.toThrow("Availability is missing or has an invalid number of slots");
+    });
+
+    it("rejects when the write leaves the day with the wrong length", async () => {
+      const { client } = clientFor(takenDay, -4);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      await expect(availability.changeSlot(asked, "free"))
+        .rejects.toThrow("Something went wrong while updating the slots; data may be corrupted");
+    });
+
+    it("rejects an unknown script result", async () => {
+      const { client } = clientFor(takenDay, 7);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      await expect(availability.changeSlot(asked, "free"))
+        .rejects.toThrow("Unexpected Redis result: 7");
+    });
+  });
+
+  describe("validation", () => {
+    it("rejects a slot missing both end and duration with a ZodError before touching redis", async () => {
+      const { getRange, evalScript, client } = clientFor(freeDay);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      await expect(availability.changeSlot({ ...slot, start: "09:00" } as never, "occupy"))
+        .rejects.toThrow(ZodError);
+      expect(getRange).not.toHaveBeenCalled();
+      expect(evalScript).not.toHaveBeenCalled();
+    });
+
+    it("rejects a malformed date with a ZodError before touching redis", async () => {
+      const { evalScript, client } = clientFor(freeDay);
+      const availability = new Availability({connection: client, resource: "salon"});
+
+      await expect(availability.changeSlot({ ...slot, date: "15-07-2026", start: "09:00", end: "10:15" }, "free"))
+        .rejects.toThrow(ZodError);
+      expect(evalScript).not.toHaveBeenCalled();
+    });
+  });
+});
+
 describe("Availability.deleteDisponibility", () => {
   const clientFor = () => {
     const del = mock(async (keys: string[]) => keys.length);
