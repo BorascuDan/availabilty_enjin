@@ -263,3 +263,55 @@ describe("Availability.checkSlot", () => {
     });
   });
 });
+
+describe("Availability.deleteDisponibility", () => {
+  const clientFor = () => {
+    const del = mock(async (keys: string[]) => keys.length);
+    return { del, client: { del } as unknown as RedisClientType };
+  };
+
+  it("maps every entry to its key and deletes them in a single del call", async () => {
+    const { del, client } = clientFor();
+    const availability = new Availability({connection: client, resource: "salon"});
+
+    const deleted = await availability.deleteDisponibility([
+      { resourceId: "resource-1", locationId: "location-1", date: "2026-07-15" },
+      { resourceId: "resource-2", locationId: "location-4", date: "2026-07-16" },
+    ]);
+
+    expect(del).toHaveBeenCalledTimes(1);
+    expect(del).toHaveBeenCalledWith([
+      "salon:availability:resource-1:location-1:2026-07-15",
+      "salon:availability:resource-2:location-4:2026-07-16",
+    ]);
+    expect(deleted).toBe(2);
+  });
+
+  it("rejects an empty array with a ZodError before deleting anything", async () => {
+    const { del, client } = clientFor();
+    const availability = new Availability({connection: client, resource: "salon"});
+
+    expect(availability.deleteDisponibility([])).rejects.toThrow(ZodError);
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("rejects an entry missing a field with a ZodError before deleting anything", async () => {
+    const { del, client } = clientFor();
+    const availability = new Availability({connection: client, resource: "salon"});
+
+    expect(availability.deleteDisponibility([
+      { resourceId: "resource-1", date: "2026-07-15" },
+    ])).rejects.toThrow(ZodError);
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed date with a ZodError before deleting anything", async () => {
+    const { del, client } = clientFor();
+    const availability = new Availability({connection: client, resource: "salon"});
+
+    expect(availability.deleteDisponibility([
+      { resourceId: "resource-1", locationId: "location-1", date: "15-07-2026" },
+    ])).rejects.toThrow(ZodError);
+    expect(del).not.toHaveBeenCalled();
+  });
+});
