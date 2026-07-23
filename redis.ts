@@ -94,7 +94,7 @@ export class RedisStore implements Store {
     end: number,
     value: 0 | 1,
   ): Promise<void> {
-    
+
     const result = Number(
       await this.#client.eval(this.set_slot_script, {
         keys: [key],
@@ -132,4 +132,23 @@ export class RedisStore implements Store {
   async deleteSlot(keys: Array<string>): Promise<number> {
     return this.#client.del(keys)
   }
+
+	async getKeysBasedOnResource(resource: string, resourceIds: Set<string>, { locationId = "*", date = "*" }: { locationId: string, date: string }): Promise<Array<string>> {
+		let resourceKeys: Array<string> = [];
+		for await (
+			const keys of this.#client.scanIterator({ COUNT: 1000, MATCH: `${resource}:availability*:${locationId}:${date}` })
+		) {
+			for (const key of keys) {
+				const [_resource, _name,  resourceId, _locationId, _date] = key.split(":");
+				if (resourceId === undefined) continue;
+				if (resourceIds.has(resourceId)) resourceKeys.push(key);
+			}
+		}
+
+		return resourceKeys;
+	}
+
+	async getSlotsByKeys(keys: Array<string>): Promise<Array<string | null>> {
+		return this.#client.mGet(keys);
+	}
 }

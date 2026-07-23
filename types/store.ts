@@ -21,4 +21,6 @@ export interface Store {
   getSlots(key: string, start: number, end: number): Promise<string>;
   setSlots(key: string, start: number, end: number, value: 0 | 1): Promise<void>;
   deleteSlot(keys: Array<string>): Promise<number>;
+	getKeysBasedOnResource(resource: string, resourceIds: Set<string>, { locationId, date }: {locationId: string, date: string}): Promise<Array<string>>;
+	getSlotsByKeys(keys: Array<string>): Promise<Array<string | null>>;
 }

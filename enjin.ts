@@ -140,6 +140,65 @@ export class Availability {
     return { slotKey, startIndex, endIndex }
   }
 
+	private generateKeysPattern({
+		resourceIds,
+		locationId = "*",
+		date = "*"
+	}: {resourceIds: Array<string|number>, locationId: string, date: string}) {
+		return resourceIds.reduce((keys, resource) => keys.add(this.generateKey(String(resource), locationId, date)), new Set());
+	}
+
+	private mergeSlots(keys: Array<string>, values: Array<string | null>) {
+		return keys.reduce((slotsPer, key, index) => {
+			if (!values[index] || values[index].length != SLOTS_PER_DAY) return slotsPer;
+			const [_resource, _name, resourceId, locationId, _date] = key.split(":");
+			if (locationId === undefined || resourceId === undefined) return slotsPer;
+			if (!slotsPer.has(locationId)) {
+				let resources = new Map();
+				resources.set(resourceId, values[index]);
+				slotsPer.set(locationId, resources);
+			} else {
+				let resources = slotsPer.get(locationId);
+				if (!resources.has(resourceId)) resources.set(resourceId, values[index])
+				else {
+					resources
+									.set(
+									 resourceId,
+										(
+											BigInt(`0b${resources.get(resourceId)}`) &
+											BigInt(`0b${values[index]}`))
+											.toString(2)
+											.padStart(SLOTS_PER_DAY, "0")
+									);
+				}
+			}
+			return slotsPer;
+		}, new Map())
+	}
+
+	private getMergeSlotsAvailableKeys(mergeSlot: Map<string, Map<string, string>>, offset: number) {
+		let keys = [];
+		for (let [key, values] of mergeSlot) {
+			for (let [_, availability] of values) {
+				let consecutiveZeros = 0;
+				for (const value of availability) {
+					if (value === "0") {
+						consecutiveZeros += 1;
+						if (consecutiveZeros === offset) {
+							keys.push(key);
+							break;
+						}
+					} else {
+						consecutiveZeros = 0;
+					}
+				}
+				break;
+			}
+		}
+
+		return keys;
+	}
+
   async checkSlot (slot: CheckSlot | unknown) {
     const { slotKey: key, startIndex: start, endIndex: end } = this.getSlotKeyAndIndex(slot)
     const slotsStatus = new Set(await this.connection.getSlots(key, start, end))
@@ -161,5 +220,14 @@ export class Availability {
       ({resourceId, locationId, date}) => this.generateKey(resourceId, locationId, date)
     )
     return this.connection.deleteSlot(keys)
-  }
+	}
+
+	async getAvailableLocations ( resourceIds: Array<string>, duration: number ) {
+		const resourceKeys = await this.connection.getKeysBasedOnResource(this.resource, new Set(resourceIds), { locationId: "*", date: "*" });
+		const resourceValues = await this.connection.getSlotsByKeys(resourceKeys);
+		const locationDisponibility = this.mergeSlots(resourceKeys, resourceValues);
+		const indexOffset = minutesIndexOffset(duration);
+		const availableLocationsIds = this.getMergeSlotsAvailableKeys(locationDisponibility, indexOffset)
+		return availableLocationsIds;
+	}
 }
